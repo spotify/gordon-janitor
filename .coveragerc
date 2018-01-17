@@ -1,0 +1,16 @@
+[run]
+branch = True
+source =
+    gordon_janitor
+
+[paths]
+source =
+   gordon_janitor
+   .tox/*/lib/python*/site-packages/gordon_janitor
+   .tox/pypy/site-packages/gordon_janitor
+
+[report]
+show_missing = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
