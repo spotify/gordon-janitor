@@ -22,7 +22,7 @@ deploy:
   provider: pypi
   user: spotify_alf
   password:
-    secure: TODO
+    secure: W7pCeYxJGOYq90puh8utm/0aAukPySGdKtXxTwl8ZQtqMsl1EHsHCwlaUXXbnrmRzxXusJUXInwkH+XwHQ4RRiqnE4Ql+t/8/qIXrzFjDglBBjCRFpW/nat78dRuxNQVOF302vr997uH1PGc9q1DEhsOLivVGqh4l/eLRyQ65Rb1jXPzKKu6BTef7zkxGkU2E2tNQ8fxdGvJIhPkdg9QAoNIoZ4H/dyp04zFtqbh1JOoKz6o8R2OzU+f03rQ4/ngrtV3RTa1ljaY8ROEFpOqpNyL4gXPI0pME4OyGFmI+2EjGsJDXxMDzR30dACJ3godFXT8bWKgx6FBm9tzFAXqbprnlKxyNROtKChJu7nUwVnTJSxjzWzKTTo12F7u4gu+djl1h0OKcSjWS05Caqi2pvRLleeMzJxDXt+cDCVHkrPLsoNs2qDIIaF5YEsl63wlQyzSgs/sYNks+L3obxOZ9XixnYYhzmpkL2c6u1xqJxHjQ3/cMtSLwDwcL1KyIbxRkprar05a+FSOsCJexIBA409r/u68NvVeOmGdULaQcpLF+7i+4ja2zbQsNyHZlLkNr1AJhVaFLodo0PD1n1cfZZLNSYO0prjHn8XXCY31PYqffe6/FwUIrmyEv4MXseyvKaszR/KQq6+xxrPfQdPOSH3OtDJuyMfd/rITM2qoWxU=
   on:
     tags: true
   distributions: sdist bdist_wheel
