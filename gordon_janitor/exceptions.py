@@ -20,3 +20,7 @@ class GordonJanitorError(Exception):
 
 class LoadPluginError(GordonJanitorError):
     """Error loading plugin."""
+
+
+class MissingPluginError(GordonJanitorError):
+    """Missing a required plugin."""

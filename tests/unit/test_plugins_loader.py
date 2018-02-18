@@ -28,22 +28,25 @@ from tests.unit.conftest import FakePlugin
 @pytest.fixture(scope='session')
 def namespaced_config():
     return {
-        'one': {'a_key': 'a_value', 'b_key': 'b_value'},
-        'one.plugin': {'a_key': 'another_value'},
-        'two': {},
-        'two.plugin': {'d_key': 'd_value'}
+        'authority': {'a_key': 'a_value', 'b_key': 'b_value'},
+        'authority.plugin': {'a_key': 'another_value'},
+        'reconciler': {},
+        'reconciler.plugin': {'d_key': 'd_value'}
     }
 
 
 @pytest.fixture(scope='session')
 def plugin_config():
     return {
-        'one.plugin': {
+        'authority.plugin': {
             'a_key': 'another_value',
             'b_key': 'b_value'
         },
-        'two.plugin': {
+        'reconciler.plugin': {
             'd_key': 'd_value'
+        },
+        'publisher.plugin': {
+            'e_key': 'e_value'
         },
     }
 
@@ -51,8 +54,9 @@ def plugin_config():
 @pytest.fixture(scope='session')
 def exp_inited_plugins(plugin_config):
     return [
-        FakePlugin(plugin_config.get('one.plugin')),
-        FakePlugin(plugin_config.get('two.plugin'))
+        FakePlugin(plugin_config.get('authority.plugin')),
+        FakePlugin(plugin_config.get('reconciler.plugin')),
+        FakePlugin(plugin_config.get('publisher.plugin')),
     ]
 
 
@@ -67,14 +71,22 @@ def mock_iter_entry_points(mocker, monkeypatch, plugins):
         mock_iter_entry_points)
 
 
+@pytest.fixture
+def kwargs():
+    return {
+        'rrset_channel': set(),
+        'changes_channel': set(),
+    }
+
+
 #####
 # The good stuff
 #####
-def test_init_plugins(plugins, plugin_config, exp_inited_plugins):
+def test_init_plugins(plugins, plugin_config, exp_inited_plugins, kwargs):
     """Plugins are initialized with their config."""
-    active_plugins = ['one.plugin', 'two.plugin']
+    active_plugins = ['authority.plugin', 'reconciler.plugin']
     inited_names, inited_plugins, errors = plugins_loader._init_plugins(
-        active_plugins, plugins, plugin_config)
+        active_plugins, plugins, plugin_config, kwargs)
 
     assert active_plugins == sorted(inited_names)
     for plugin_obj in inited_plugins:
@@ -82,7 +94,7 @@ def test_init_plugins(plugins, plugin_config, exp_inited_plugins):
         assert any([p.config == plugin_obj.config for p in exp_inited_plugins])
 
 
-def test_init_plugins_exceptions(mocker):
+def test_init_plugins_exceptions(kwargs, mocker):
     """Non-callable plugin returns plugin-specific exceptions."""
     name = 'B0rkedPlugin'
     config = {'B0rkedPlugin': {'foo': 'bar'}}
@@ -93,32 +105,32 @@ def test_init_plugins_exceptions(mocker):
     plugins = {name: plugin_mock}
 
     inited_names, inited_plugins, errors = plugins_loader._init_plugins(
-        [name], plugins, config)
+        [name], plugins, config, kwargs)
     assert 1 == len(errors)
 
 
-def test_init_plugins_skipped(plugins, plugin_config, caplog):
+def test_init_plugins_skipped(plugins, plugin_config, kwargs, caplog):
     """Skips plugins that are not configured."""
-    active_plugins = ['one.plugin', 'two.plugin']
-    config = {'one.plugin': plugin_config['one.plugin']}
+    active_plugins = ['authority.plugin', 'reconciler.plugin']
+    config = {'authority.plugin': plugin_config['authority.plugin']}
 
     inited_names, inited_plugins, errors = plugins_loader._init_plugins(
-        active_plugins, plugins, config)
+        active_plugins, plugins, config, kwargs)
 
     assert 1 == len(inited_plugins) == len(inited_names)
     assert 1 == len(caplog.records)
 
 
-def test_init_plugins_empty_config(plugins):
+def test_init_plugins_empty_config(plugins, kwargs):
     """Loads plugin if mathcing config key exists with empty config."""
-    active_plugins = ['one.plugin', 'two.plugin']
+    active_plugins = ['authority.plugin', 'reconciler.plugin']
     config = {
-        'one.plugin': {},
-        'two.plugin': {}
+        'authority.plugin': {},
+        'reconciler.plugin': {}
     }
 
     inited_names, inited_plugins, errors = plugins_loader._init_plugins(
-        active_plugins, plugins, config)
+        active_plugins, plugins, config, kwargs)
 
     assert 2 == len(inited_plugins) == len(inited_names)
     for plugin_obj in inited_plugins:
@@ -126,22 +138,22 @@ def test_init_plugins_empty_config(plugins):
         assert {} == plugin_obj.config
 
 
-def test_init_plugins_skip_inactive(plugins, plugin_config):
+def test_init_plugins_skip_inactive(plugins, plugin_config, kwargs):
     """Skips plugins that are not activated in core config."""
-    active_plugins = ['one.plugin']
+    active_plugins = ['authority.plugin']
     inited_names, inited_plugins, errors = plugins_loader._init_plugins(
-        active_plugins, plugins, plugin_config)
+        active_plugins, plugins, plugin_config, kwargs)
 
     assert 1 == len(inited_plugins) == len(inited_names)
-    assert plugin_config.get('one.plugin') == inited_plugins[0].config
+    assert plugin_config.get('authority.plugin') == inited_plugins[0].config
 
 
 merge_args = 'namespace,exp_config'
 merge_params = [
-    ('one', {'a_key': 'a_value', 'b_key': 'b_value'}),
-    ('one.plugin', {'a_key': 'another_value', 'b_key': 'b_value'}),
-    ('two', {}),
-    ('two.plugin', {'d_key': 'd_value'}),
+    ('authority', {'a_key': 'a_value', 'b_key': 'b_value'}),
+    ('authority.plugin', {'a_key': 'another_value', 'b_key': 'b_value'}),
+    ('reconciler', {}),
+    ('reconciler.plugin', {'d_key': 'd_value'}),
 ]
 
 
@@ -155,10 +167,10 @@ def test_merge_config(namespace, exp_config, namespaced_config):
 
 namespace_args = 'namespace,exp_config'
 namespace_params = [
-    ('one', {'a_key': 'a_value', 'b_key': 'b_value'}),
-    ('one.plugin', {'a_key': 'another_value'}),
-    ('two', {}),
-    ('two.plugin', {'d_key': 'd_value'}),
+    ('authority', {'a_key': 'a_value', 'b_key': 'b_value'}),
+    ('authority.plugin', {'a_key': 'another_value'}),
+    ('reconciler', {}),
+    ('reconciler.plugin', {'d_key': 'd_value'}),
 ]
 
 
@@ -175,35 +187,45 @@ def test_get_namespaced_config(namespace, exp_config, plugins, loaded_config):
 
 def test_load_plugin_configs(plugins, loaded_config, plugin_config):
     """Load plugin-specific config ignoring other plugins' configs."""
-    plugin_names = ['one', 'one.plugin', 'two', 'two.plugin']
+    plugin_names = [
+        'authority', 'authority.plugin', 'reconciler', 'reconciler.plugin'
+    ]
     parsed_config = plugins_loader._load_plugin_configs(
         plugin_names, loaded_config)
-    assert plugin_config['one.plugin'] == parsed_config['one.plugin']
-    assert plugin_config['two.plugin'] == parsed_config['two.plugin']
+
+    plugin = 'authority.plugin'
+    assert plugin_config[plugin] == parsed_config[plugin]
+    plugin = 'reconciler.plugin'
+    assert plugin_config[plugin] == parsed_config[plugin]
 
 
 def test_get_plugin_config_keys(plugins):
     """Entry point keys for plugins are parsed to config keys."""
     config_keys = plugins_loader._get_plugin_config_keys(plugins)
-    expected = ['one', 'one.plugin', 'two', 'two.plugin']
-    assert expected == config_keys
+    expected = [
+        'authority', 'authority.plugin',
+        'reconciler', 'reconciler.plugin',
+        'publisher', 'publisher.plugin',
+    ]
+    assert sorted(expected) == sorted(config_keys)
 
 
 def test_get_activated_plugins(loaded_config, plugins):
     """Assert activated plugins are installed."""
     active = plugins_loader._get_activated_plugins(loaded_config, plugins)
 
-    assert ['one.plugin', 'two.plugin'] == active
+    exp_active = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
+    assert sorted(exp_active) == sorted(active)
 
 
 def test_get_activated_plugins_raises(loaded_config, plugins):
     """Raise when activated plugins are not installed."""
-    loaded_config['core']['plugins'].append('three.plugin')
+    loaded_config['core']['plugins'].append('four.plugin')
 
     with pytest.raises(exceptions.LoadPluginError) as e:
         plugins_loader._get_activated_plugins(loaded_config, plugins)
 
-    e.match('Plugin "three.plugin" not installed')
+    e.match('Plugin "four.plugin" not installed')
 
 
 def test_gather_installed_plugins(mock_iter_entry_points, plugins):
@@ -213,33 +235,34 @@ def test_gather_installed_plugins(mock_iter_entry_points, plugins):
 
 
 def test_load_plugins(mock_iter_entry_points, loaded_config, plugins,
-                      exp_inited_plugins):
+                      exp_inited_plugins, kwargs):
     """Plugins are loaded and instantiated with their config."""
-    inited_names, loaded_plugins, errors = plugins_loader.load_plugins(
-        loaded_config)
 
-    assert 2 == len(inited_names) == len(loaded_plugins)
+    inited_names, loaded_plugins, errors = plugins_loader.load_plugins(
+        loaded_config, kwargs)
+
+    assert 3 == len(inited_names) == len(loaded_plugins)
     for plugin_obj in loaded_plugins:
         assert isinstance(plugin_obj, FakePlugin)
         assert any([p.config == plugin_obj.config for p in exp_inited_plugins])
 
 
-def test_load_plugins_none_loaded(mocker, plugins, exp_inited_plugins):
+def test_load_plugins_none_loaded(mocker, plugins, exp_inited_plugins, kwargs):
     """Return empty list when no plugins are found."""
     mock_iter_entry_points = mocker.MagicMock(pkg_resources.iter_entry_points)
     mock_iter_entry_points.return_value = []
 
     loaded_config = {'core': {}}
     inited_names, loaded_plugins, errors = plugins_loader.load_plugins(
-        loaded_config)
+        loaded_config, kwargs)
     assert [] == loaded_plugins == inited_names == errors
 
 
 def test_load_plugins_exceptions(plugins, exp_inited_plugins, loaded_config,
                                  mock_iter_entry_points, plugin_exc_mock,
-                                 mocker, monkeypatch):
+                                 kwargs, mocker, monkeypatch):
     """Loading plugin exceptions are returned."""
-    names = ['one.plugin', 'two.plugin']
+    names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
     inited_plugins_mock = mocker.MagicMock(
         plugins_loader._init_plugins, autospec=True)
 
@@ -248,5 +271,5 @@ def test_load_plugins_exceptions(plugins, exp_inited_plugins, loaded_config,
     monkeypatch.setattr(plugins_loader, '_init_plugins', inited_plugins_mock)
 
     inited_names, loaded_plugins, errors = plugins_loader.load_plugins(
-        loaded_config)
+        loaded_config, kwargs)
     assert 1 == len(errors)
