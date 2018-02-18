@@ -25,6 +25,7 @@ User's Guide
 
    config
    plugins
+   interfaces
    api
 
 

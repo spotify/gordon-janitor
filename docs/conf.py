@@ -58,6 +58,8 @@ extensions = [
     'sphinx.ext.napoleon',
     # link to other projects' documentation
     'sphinx.ext.intersphinx',
+    # zope interface doc help
+    'sphinxcontrib.zopeext.autointerface',
 ]
 
 
@@ -102,6 +104,7 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
 
+autodoc_default_flags = ['members']
 
 # -- Options for HTML output ----------------------------------------------
 

@@ -3,6 +3,7 @@ Configuring the Gordon Janitor Service
 
 
 .. automodule:: gordon_janitor.main
+    :noindex:
 
 
 Example Configuration
