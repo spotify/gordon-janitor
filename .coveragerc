@@ -2,6 +2,7 @@
 branch = True
 source =
     gordon_janitor
+omit = gordon_janitor/interfaces.py
 
 [paths]
 source =
