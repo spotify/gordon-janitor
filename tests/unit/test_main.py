@@ -17,7 +17,9 @@
 import pytest
 from click.testing import CliRunner
 
+from gordon_janitor import interfaces
 from gordon_janitor import main
+from tests.unit import conftest
 
 
 #####
@@ -74,19 +76,29 @@ def setup_mock(mocker, monkeypatch):
 def load_plugins_mock(mocker, monkeypatch):
     load_plugins_mock = mocker.MagicMock(
         main.plugins_loader.load_plugins, autospec=True)
-    monkeypatch.setattr(main.plugins_loader, 'load_plugins', load_plugins_mock)
+    patch = 'gordon_janitor.main.plugins_loader.load_plugins'
+    monkeypatch.setattr(patch, load_plugins_mock)
     return load_plugins_mock
 
 
-def test_log_or_exit_on_exceptions_no_debug(plugin_exc_mock, mocker,
-                                            monkeypatch):
+args = 'error_type'
+params = [
+    'list', 'obj'
+]
+
+
+@pytest.mark.parametrize(args, params)
+def test_log_or_exit_on_exceptions_no_debug(error_type, plugin_exc_mock,
+                                            mocker, monkeypatch):
     """Raise SystemExit if debug flag is off."""
     logging_mock = mocker.MagicMock(main.logging, autospec=True)
     monkeypatch.setattr(main, 'logging', logging_mock)
 
-    errors = [('bad.plugin', plugin_exc_mock)]
+    error = ('bad.plugin', plugin_exc_mock)
+    if error_type == 'list':
+        error = [('bad.plugin', error)]
     with pytest.raises(SystemExit) as e:
-        main._log_or_exit_on_exceptions(errors, debug=False)
+        main._log_or_exit_on_exceptions('base msg', error, debug=False)
 
     e.match('1')
     logging_mock.error.assert_called_once()
@@ -100,10 +112,69 @@ def test_log_or_exit_on_exceptions_debug(plugin_exc_mock, mocker, monkeypatch):
 
     errors = [('bad.plugin', plugin_exc_mock)]
 
-    main._log_or_exit_on_exceptions(errors, debug=True)
+    main._log_or_exit_on_exceptions('base_msg', errors, debug=True)
 
     logging_mock.warn.assert_called_once()
     logging_mock.error.assert_not_called()
+
+
+@pytest.fixture
+def mock_provided_by(mocker, monkeypatch):
+    mock_iauthority = mocker.Mock(interfaces.IAuthority, autospec=True)
+    mock_iauthority.providedBy.side_effect = iter([True])
+    patch = 'gordon_janitor.main.interfaces.IAuthority'
+    monkeypatch.setattr(patch, mock_iauthority)
+
+    mock_ireconciler = mocker.Mock(interfaces.IReconciler, autospec=True)
+    mock_ireconciler.providedBy.side_effect = iter([True, False])
+    patch = 'gordon_janitor.main.interfaces.IReconciler'
+    monkeypatch.setattr(patch, mock_ireconciler)
+
+    mock_ipublisher = mocker.Mock(interfaces.IPublisher, autospec=True)
+    mock_ipublisher.providedBy.side_effect = iter([True, False, False])
+    patch = 'gordon_janitor.main.interfaces.IPublisher'
+    monkeypatch.setattr(patch, mock_ipublisher)
+
+    return mock_iauthority, mock_ireconciler, mock_ipublisher
+
+
+def test_gather_providers_no_providers(plugins, mock_provided_by, caplog):
+    mock_iauthority, mock_ireconciler, mock_ipublisher = mock_provided_by
+    mock_iauthority.providedBy.side_effect = [False, False, False]
+    mock_ireconciler.providedBy.side_effect = [False, False, False]
+    mock_ipublisher.providedBy.side_effect = [False, False, False]
+
+    main._gather_providers(plugins, debug=True)
+
+    assert 3 == len(caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_run_no_providers(plugins, mock_provided_by, caplog):
+    mock_iauthority, mock_ireconciler, mock_ipublisher = mock_provided_by
+    mock_iauthority.providedBy.side_effect = [False, False, False]
+    mock_ireconciler.providedBy.side_effect = [False, False, False]
+    mock_ipublisher.providedBy.side_effect = [False, False, False]
+
+    await main._run(plugins, debug=True)
+
+    assert 6 == len(caplog.records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('debug', (True, False))
+async def test_async_run_debug(debug, mock_provided_by, caplog):
+    plugins = [
+        conftest.FakePlugin({}),
+        conftest.FakePlugin({}),
+        conftest.FakePlugin({})
+    ]
+    await main._run(plugins, debug=debug)
+
+    mock_iauthority, mock_ireconciler, mock_ipublisher = mock_provided_by
+    assert 3 == mock_ipublisher.providedBy.call_count
+    assert 2 == mock_ireconciler.providedBy.call_count
+    assert 1 == mock_iauthority.providedBy.call_count
 
 
 run_args = 'has_active_plugins,exp_log_count'
@@ -115,12 +186,17 @@ run_params = [
 
 @pytest.mark.parametrize(run_args, run_params)
 def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
-             load_plugins_mock, mocker, monkeypatch, caplog):
+             load_plugins_mock, mock_provided_by, mocker, monkeypatch, caplog):
     """Successfully start the Gordon service."""
-    names, errors = [], []
+    names, _plugins, errors = [], [], []
     if has_active_plugins:
-        names = ['one.plugin', 'two.plugin']
-    load_plugins_mock.return_value = names, plugins, errors
+        names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
+        _plugins = [
+            conftest.FakePlugin({}),
+            conftest.FakePlugin({}),
+            conftest.FakePlugin({})
+        ]
+    load_plugins_mock.return_value = names, _plugins, errors
 
     runner = CliRunner()
     result = runner.invoke(main.run)
@@ -132,13 +208,13 @@ def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
 
 def test_run_raise_exceptions(loaded_config, plugins, caplog, setup_mock,
                               load_plugins_mock, plugin_exc_mock,
-                              monkeypatch, mocker):
+                              mock_provided_by, monkeypatch, mocker):
     """Raise plugin exceptions when not in debug mode."""
     loaded_config['core']['debug'] = False
     setup_mock.return_value = loaded_config
 
-    names = ['one.plugin', 'two.plugin']
-    errors = [('three.plugin', plugin_exc_mock)]
+    names = ['authority.plugin', 'reconciler.plugin']
+    errors = [('publisher.plugin', plugin_exc_mock)]
     load_plugins_mock.return_value = names, plugins, errors
 
     runner = CliRunner()

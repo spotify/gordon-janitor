@@ -32,6 +32,7 @@ Example:
     $ python gordon_janitor/main.py --config-root /etc/default/
 """
 
+import asyncio
 import logging
 import os
 
@@ -40,6 +41,8 @@ import toml
 import ulogger
 
 from gordon_janitor import __version__ as version
+from gordon_janitor import exceptions
+from gordon_janitor import interfaces
 from gordon_janitor import plugins_loader
 
 
@@ -83,18 +86,65 @@ def setup(config_root=''):
     return config
 
 
-def _log_or_exit_on_exceptions(errors, debug):
+def _log_or_exit_on_exceptions(base_msg, exc, debug):
     log_level_func = logging.warn
     if not debug:
         log_level_func = logging.error
 
-    base_msg = 'Plugin "{name}" was not loaded:'
-    for name, exc in errors:
-        msg = base_msg.format(name=name)
-        log_level_func(msg, exc_info=exc)
+    if isinstance(exc, list):
+        for exception in exc:
+            log_level_func(base_msg, exc_info=exception)
+    else:
+        log_level_func(base_msg, exc_info=exc)
 
     if not debug:
         raise SystemExit(1)
+
+
+def _gather_providers(plugins, debug):
+    # NOTE: this assumes dict ordering is deterministic, if ever ported
+    #       to <3.6, this will break!
+    providers = {
+        'publisher': None,
+        'reconciler': None,
+        'authority': None,
+    }
+    for plugin in plugins:
+        if interfaces.IPublisher.providedBy(plugin):
+            providers['publisher'] = plugin
+        elif interfaces.IReconciler.providedBy(plugin):
+            providers['reconciler'] = plugin
+        elif interfaces.IAuthority.providedBy(plugin):
+            providers['authority'] = plugin
+
+    missing = []
+    msg = ('A provider for "{name}" interface is not configured for the '
+           'Janitor service or is not implemented.')
+    for provider, obj in providers.items():
+        if obj is None:
+            exc = exceptions.MissingPluginError(msg.format(name=provider))
+            missing.append(exc)
+    if missing:
+        base_msg = 'Issue starting plugins: '
+        _log_or_exit_on_exceptions(base_msg, missing, debug=debug)
+
+    return providers
+
+
+async def _run(plugins, debug):
+    # organize plugins to assert order; publisher should start first,
+    # authority last
+    providers = _gather_providers(plugins, debug=debug)
+
+    tasks = []
+    for name, provider in providers.items():
+        try:
+            tasks.append(provider.start())
+        except AttributeError as e:
+            base_msg = 'Plugin missing required "start" method: '
+            _log_or_exit_on_exceptions(base_msg, name, debug=debug)
+
+    await asyncio.gather(*tasks)
 
 
 @click.command()
@@ -105,14 +155,29 @@ def run(config_root):
     config = setup(os.path.abspath(config_root))
     debug_mode = config.get('core', {}).get('debug', False)
 
-    plugin_names, plugins, errors = plugins_loader.load_plugins(config)
+    # TODO: initialize a metrics object - either here or within `load_plugins`
+    plugin_kwargs = {
+        'rrset_channel': asyncio.Queue(),
+        'changes_channel': asyncio.Queue(),
+    }
+
+    plugin_names, plugins, errors = plugins_loader.load_plugins(config,
+                                                                plugin_kwargs)
     if errors:
-        _log_or_exit_on_exceptions(errors, debug_mode)
+        base_msg = 'Plugin was not loaded:'
+        _log_or_exit_on_exceptions(base_msg, errors, debug_mode)
 
-    if plugin_names:
-        logging.info(f'Loaded {len(plugin_names)} plugins: {plugin_names}')
+    if not plugin_names:
+        logging.error('No plugins to run, exiting.')
+        return SystemExit(1)
 
+    logging.info(f'Loaded {len(plugin_names)} plugins: {plugin_names}')
     logging.info(f'Starting gordon janitor v{version}...')
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(_run(plugins, debug_mode))
+    finally:
+        loop.close()
 
 
 if __name__ == '__main__':

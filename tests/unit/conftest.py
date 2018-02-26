@@ -22,8 +22,14 @@ import pytest
 
 
 class FakePlugin:
-    def __init__(self, config):
+    def __init__(self, config, **kwargs):
         self.config = config
+
+    async def start(self):
+        pass
+
+    async def done(self):
+        pass
 
 
 @pytest.fixture
@@ -36,42 +42,51 @@ def plugin_exc_mock():
 
 @pytest.fixture(scope='session')
 def config_file():
+    plugins = '["authority.plugin", "reconciler.plugin", "publisher.plugin"]'
     return ('[core]\n'
-            'plugins = ["one.plugin", "two.plugin"]\n'
+            f'plugins = {plugins}\n'
             'debug = true\n'
             '[core.logging]\n'
             'level = "debug"\n'
             'handlers = ["stream"]\n'
-            '[one]\n'
+            '[authority]\n'
             'a_key = "a_value"\n'
             'b_key = "b_value"\n'
-            '[one.plugin]\n'
+            '[authority.plugin]\n'
             'a_key = "another_value"\n'
-            '[two.plugin]\n'
-            'd_key = "d_value"')
+            '[reconciler.plugin]\n'
+            'd_key = "d_value"\n'
+            '[publisher.plugin]\n'
+            'e_key = "e_value"')
 
 
 @pytest.fixture
 def loaded_config():
     return {
         'core': {
-            'plugins': ['one.plugin', 'two.plugin'],
+            'plugins': [
+                'authority.plugin', 'reconciler.plugin', 'publisher.plugin'],
             'debug': True,
             'logging': {
                 'level': 'debug',
                 'handlers': ['stream'],
             }
         },
-        'one': {
+        'authority': {
             'a_key': 'a_value',
             'b_key': 'b_value',
             'plugin': {
                 'a_key': 'another_value',
             },
         },
-        'two': {
+        'reconciler': {
             'plugin': {
                 'd_key': 'd_value',
+            },
+        },
+        'publisher': {
+            'plugin': {
+                'e_key': 'e_value',
             },
         },
     }
@@ -80,7 +95,7 @@ def loaded_config():
 @pytest.fixture
 def plugins(mocker):
     plugins = {}
-    names = ['one.plugin', 'two.plugin']
+    names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
     for name in names:
         plugin_mock = mocker.MagicMock(pkg_resources.EntryPoint, autospec=True)
         plugin_mock.name = name
