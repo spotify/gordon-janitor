@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-#
-# Copyright 2018 Spotify AB
+# Copyright (c) 2017 Spotify AB
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__author__ = 'Lynn Root'
-__version__ = '0.0.1.dev1'
-__license__ = 'Apache 2.0'
-__email__ = 'lynn@spotify.com'
-__description__ = 'DNS record reconciliation for Gordon: Event-driven Cloud DNS'
-__uri__ = 'https://github.com/spotify/gordon-janitor'
+
+class GordonJanitorError(Exception):
+    """General Gordon Application Error."""
+
+
+class LoadPluginError(GordonJanitorError):
+    """Error loading plugin."""
+
+
+class MissingPluginError(GordonJanitorError):
+    """Missing a required plugin."""

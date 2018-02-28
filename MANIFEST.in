@@ -3,7 +3,7 @@ recursive-include gordon_janitor *.py
 recursive-include tests *.py
 
 # Exclude service-specific config
-exclude gordon*.toml
+exclude gordon-janitor*.toml
 
 # Documentation
 include docs/Makefile
