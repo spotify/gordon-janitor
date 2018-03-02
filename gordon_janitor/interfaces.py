@@ -117,3 +117,24 @@ class IPublisher(IGenericPlugin):
     """
     def __init__(config, changes_channel, metrics=None):
         """Initialize a Publisher Plugin client."""
+
+
+class IMessageGenerator(Interface):
+    """Create messages that can be sent from plugin to plugin."""
+    async def generate_msg(self, data_item):
+        """Create a message based off a data item.
+
+        Args:
+            data_item (any): source data.
+        Returns:
+            any: a well formed message.
+        """
+
+    async def generate_batch(self, data):
+        """Create a batch of messages based on data.
+
+        Args:
+            data (list): a collection of data to transform.
+        Returns:
+            any: a collection of messages.
+        """
