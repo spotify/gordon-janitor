@@ -125,7 +125,7 @@ def _gather_providers(plugins, debug):
             exc = exceptions.MissingPluginError(msg.format(name=provider))
             missing.append(exc)
     if missing:
-        base_msg = 'Issue starting plugins: '
+        base_msg = 'Issue running plugins: '
         _log_or_exit_on_exceptions(base_msg, missing, debug=debug)
 
     return providers
@@ -139,9 +139,9 @@ async def _run(plugins, debug):
     tasks = []
     for name, provider in providers.items():
         try:
-            tasks.append(provider.start())
+            tasks.append(provider.run())
         except AttributeError as e:
-            base_msg = 'Plugin missing required "start" method: '
+            base_msg = 'Plugin missing required "run" method: '
             _log_or_exit_on_exceptions(base_msg, name, debug=debug)
 
     await asyncio.gather(*tasks)
