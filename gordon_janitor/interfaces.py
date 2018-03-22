@@ -36,15 +36,15 @@ class IGenericPlugin(Interface):
     def __init__(config, **plugin_kwargs):
         """Initialize a Janitor Plugin client."""
 
-    async def start():
+    async def run():
         """Start plugin in the main event loop.
 
-        Once required work is all processed, :py:meth:`done` needs to
+        Once required work is all processed, :py:meth:`cleanup` needs to
         be called.
         """
 
-    async def done():
-        """Cleanup once plugin-specific work is done.
+    async def cleanup():
+        """Cleanup once plugin-specific work is cleanup.
 
         Cleanup work might include allowing outstanding asynchronous
         Python tasks to finish, cancelling them if they extend beyond a

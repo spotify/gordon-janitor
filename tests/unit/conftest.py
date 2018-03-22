@@ -25,10 +25,10 @@ class FakePlugin:
     def __init__(self, config, **kwargs):
         self.config = config
 
-    async def start(self):
+    async def run(self):
         pass
 
-    async def done(self):
+    async def cleanup(self):
         pass
 
 
