@@ -158,9 +158,9 @@ def _load_plugin_configs(plugin_names, config):
 def _get_plugin_config_keys(plugins):
     # Make sure all parent namespaces of a plugin are available
     # to load config for easy config handling
-    defined_plugin_namespace = plugins.keys()
+
     all_config_keys = set()
-    for namespace in defined_plugin_namespace:
+    for namespace in plugins:
         namespaces = namespace.split('.')
         namespaces_to_build = []
         while len(namespaces):
@@ -204,7 +204,7 @@ def load_plugins(config, plugin_kwargs):
     active_plugins = _get_activated_plugins(config, installed_plugins)
     if not active_plugins:
         return [], [], []
-    plugin_namespaces = _get_plugin_config_keys(installed_plugins)
+    plugin_namespaces = _get_plugin_config_keys(active_plugins)
     plugin_configs = _load_plugin_configs(plugin_namespaces, config)
     return _init_plugins(
         active_plugins, installed_plugins, plugin_configs, plugin_kwargs)
