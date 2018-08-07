@@ -1,0 +1,25 @@
+# NOTICE - Test Fixture for Gordon Janitor
+# Gordon Core Config
+[core]
+plugins = ["xyz.authority", "xyz.reconciler", "xyz.publisher"]
+debug = true
+
+[core.logging]
+level = "debug"
+handlers = ["stream"]
+format = "%(created)f %(levelno)d %(message)s"
+date_format = "%Y-%m-%dT%H:%M:%S"
+
+# Plugin Config
+[xyz]
+a_key = "a_value"
+b_key = "b_value"
+
+[xyz.authority]
+a_key = "another_value"
+
+[xyz.reconciler]
+d_key = "d_value"
+
+[xyz.publisher]
+c_key = "c_value"

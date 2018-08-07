@@ -39,11 +39,14 @@ import os
 import click
 import toml
 import ulogger
+from gordon import plugins_loader
 
 from gordon_janitor import __version__ as version
 from gordon_janitor import exceptions
 from gordon_janitor import interfaces
-from gordon_janitor import plugins_loader
+
+
+plugins_loader.PLUGIN_NAMESPACE = 'gordon_janitor.plugins'
 
 
 def _load_config(root=''):
@@ -161,8 +164,9 @@ def run(config_root):
         'changes_channel': asyncio.Queue(),
     }
 
-    plugin_names, plugins, errors = plugins_loader.load_plugins(config,
-                                                                plugin_kwargs)
+    plugin_names, plugins, errors, plugin_kwargs = plugins_loader.load_plugins(
+        config, plugin_kwargs)
+
     if errors:
         base_msg = 'Plugin was not loaded:'
         _log_or_exit_on_exceptions(base_msg, errors, debug_mode)

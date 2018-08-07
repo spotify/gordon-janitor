@@ -1,7 +1,7 @@
 Gordon Janitor's Plugin System
 ==============================
 
-.. automodule:: gordon_janitor.plugins_loader
+.. automodule:: gordon.plugins_loader
     :noindex:
 
 Writing a Plugin
