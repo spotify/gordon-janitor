@@ -188,7 +188,7 @@ run_params = [
 def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
              load_plugins_mock, mock_provided_by, mocker, monkeypatch, caplog):
     """Successfully start the Gordon service."""
-    names, _plugins, errors = [], [], []
+    names, _plugins, errors, kwargs = [], [], [], {}
     if has_active_plugins:
         names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
         _plugins = [
@@ -196,7 +196,7 @@ def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
             conftest.FakePlugin({}),
             conftest.FakePlugin({})
         ]
-    load_plugins_mock.return_value = names, _plugins, errors
+    load_plugins_mock.return_value = names, _plugins, errors, kwargs
 
     runner = CliRunner()
     result = runner.invoke(main.run)
@@ -215,7 +215,8 @@ def test_run_raise_exceptions(loaded_config, plugins, caplog, setup_mock,
 
     names = ['authority.plugin', 'reconciler.plugin']
     errors = [('publisher.plugin', plugin_exc_mock)]
-    load_plugins_mock.return_value = names, plugins, errors
+    kwargs = {}
+    load_plugins_mock.return_value = names, plugins, errors, kwargs
 
     runner = CliRunner()
     result = runner.invoke(main.run)

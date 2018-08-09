@@ -15,7 +15,7 @@
 # limitations under the License.
 
 __author__ = 'Lynn Root'
-__version__ = '0.0.1.dev4'
+__version__ = '0.0.1.dev5'
 __license__ = 'Apache 2.0'
 __email__ = 'lynn@spotify.com'
 __description__ = 'DNS record reconciliation for Gordon: Event-driven Cloud DNS'

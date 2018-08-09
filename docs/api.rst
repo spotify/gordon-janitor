@@ -16,6 +16,6 @@ main
 plugins_loader
 --------------
 
-.. automodule:: gordon_janitor.plugins_loader
+.. automodule:: gordon.plugins_loader
 
-.. autofunction:: gordon_janitor.plugins_loader.load_plugins
+.. autofunction:: gordon.plugins_loader.load_plugins

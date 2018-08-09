@@ -17,6 +17,8 @@
 Module for reusable pytest fixtures.
 """
 
+import os
+
 import pkg_resources
 import pytest
 
@@ -42,22 +44,10 @@ def plugin_exc_mock():
 
 @pytest.fixture(scope='session')
 def config_file():
-    plugins = '["authority.plugin", "reconciler.plugin", "publisher.plugin"]'
-    return ('[core]\n'
-            f'plugins = {plugins}\n'
-            'debug = true\n'
-            '[core.logging]\n'
-            'level = "debug"\n'
-            'handlers = ["stream"]\n'
-            '[authority]\n'
-            'a_key = "a_value"\n'
-            'b_key = "b_value"\n'
-            '[authority.plugin]\n'
-            'a_key = "another_value"\n'
-            '[reconciler.plugin]\n'
-            'd_key = "d_value"\n'
-            '[publisher.plugin]\n'
-            'e_key = "e_value"')
+    here = os.path.dirname(os.path.realpath(__file__))
+    filepath = os.path.join(here, 'fixtures/test-gordon-janitor.toml')
+    with open(filepath, 'r') as f:
+        return f.read()
 
 
 @pytest.fixture
@@ -65,37 +55,37 @@ def loaded_config():
     return {
         'core': {
             'plugins': [
-                'authority.plugin', 'reconciler.plugin', 'publisher.plugin'],
+                'xyz.authority',
+                'xyz.reconciler',
+                'xyz.publisher'],
             'debug': True,
             'logging': {
                 'level': 'debug',
                 'handlers': ['stream'],
+                'format': '%(created)f %(levelno)d %(message)s',
+                'date_format': '%Y-%m-%dT%H:%M:%S',
             }
         },
-        'authority': {
+        'xyz': {
             'a_key': 'a_value',
             'b_key': 'b_value',
-            'plugin': {
+            'authority': {
                 'a_key': 'another_value',
             },
-        },
-        'reconciler': {
-            'plugin': {
+            'reconciler': {
                 'd_key': 'd_value',
             },
-        },
-        'publisher': {
-            'plugin': {
-                'e_key': 'e_value',
-            },
-        },
+            'publisher': {
+                'c_key': 'c_value',
+            }
+        }
     }
 
 
 @pytest.fixture
 def plugins(mocker):
     plugins = {}
-    names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
+    names = ['xyz.authority', 'xyz.reconciler', 'xyz.publisher']
     for name in names:
         plugin_mock = mocker.MagicMock(pkg_resources.EntryPoint, autospec=True)
         plugin_mock.name = name
