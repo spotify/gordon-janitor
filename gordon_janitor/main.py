@@ -167,9 +167,9 @@ def run(config_root):
     plugin_names, plugins, errors, plugin_kwargs = plugins_loader.load_plugins(
         config, plugin_kwargs)
 
-    if errors:
-        base_msg = 'Plugin was not loaded:'
-        _log_or_exit_on_exceptions(base_msg, errors, debug_mode)
+    for err_plugin, exc in errors:
+        base_msg = f'Plugin was not loaded: {err_plugin}'
+        _log_or_exit_on_exceptions(base_msg, exc, debug=debug_mode)
 
     if not plugin_names:
         logging.error('No plugins to run, exiting.')
