@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import logging
 
 import pytest
@@ -34,8 +35,37 @@ def test_load_config(tmpdir, suffix, config_file, loaded_config):
     conf_file = tmpdir.mkdir('config').join(filename)
     conf_file.write(config_file)
     config = main._load_config(root=conf_file.dirpath())
-
     assert loaded_config == config
+
+
+def test_load_config_deep_merges(tmpdir, config_file, loaded_config):
+    """Additively merge user file to main config."""
+    config_dir = tmpdir.mkdir('mergeconfig')
+    main_conf_file = config_dir.join('gordon-janitor.toml')
+    main_conf_file.write(config_file)
+
+    user_conf_file = config_dir.join('gordon-janitor-user.toml')
+    user_conf_file.write('[core.logging]\nlevel = "error"\n')
+    config = main._load_config(root=config_dir.strpath)
+
+    expected_config = copy.deepcopy(loaded_config)
+    expected_config['core']['logging']['level'] = 'error'
+    assert expected_config == config
+
+
+@pytest.mark.parametrize('a,b,expected', [
+    ({'a': 1}, {'b': 2}, {'a': 1, 'b': 2}),
+    ({'a': 1}, {'a': 2}, {'a': 2}),
+    ({'a': {'a1': 1}}, {'a': {'a2': 2}}, {'a': {'a1': 1, 'a2': 2}}),
+    ({'a': {'a1': 1}}, {'a': {'a1': 2}}, {'a': {'a1': 2}}),
+    ({}, {'a': {'a1': 1}}, {'a': {'a1': 1}}),
+    ({'a': None}, {'a': {'a1': 1}}, {'a': {'a1': 1}}),
+    ({'a': {'a1': 1}}, {'a': None}, {'a': None}),
+    ({'a': {'a1': 1}}, {'a': {}}, {'a': {'a1': 1}})
+])
+def test_deep_merge_dict(a, b, expected):
+    main._deep_merge_dict(a, b)
+    assert expected == a
 
 
 def test_load_config_raises(tmpdir):
