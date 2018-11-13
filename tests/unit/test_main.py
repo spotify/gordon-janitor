@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import pytest
 from click.testing import CliRunner
 
@@ -79,6 +81,16 @@ def load_plugins_mock(mocker, monkeypatch):
     patch = 'gordon_janitor.main.plugins_loader.load_plugins'
     monkeypatch.setattr(patch, load_plugins_mock)
     return load_plugins_mock
+
+
+@pytest.fixture
+def metrics_mock(mocker):
+    metrics = mocker.Mock()
+
+    async def incr(*args, **kwargs):
+        metrics._incr(*args, **kwargs)
+    metrics.incr = incr
+    return metrics
 
 
 @pytest.mark.parametrize('error_type', ['list', 'obj'])
@@ -172,19 +184,27 @@ async def test_async_run_debug(debug, mock_provided_by, caplog):
     assert 1 == mock_iauthority.providedBy.call_count
 
 
-run_args = 'has_active_plugins,exp_log_count'
+run_args = 'has_active_plugins,has_metric,exp_log_count'
 run_params = [
-    (True, 2),
-    (False, 1),
+    (True, True, 3),
+    (True, False, 3),
+    (False, True, 1),
 ]
 
 
 @pytest.mark.parametrize(run_args, run_params)
-def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
-             load_plugins_mock, mock_provided_by, mocker, monkeypatch, caplog):
+def test_run(has_active_plugins, has_metric, exp_log_count, setup_mock,
+             load_plugins_mock, mock_provided_by, monkeypatch, caplog,
+             metrics_mock, mocker, event_loop):
     """Successfully start the Gordon service."""
-    names, _plugins, errors, kwargs = [], [], [], {}
+    mock_get_event_loop = mocker.Mock(return_value=event_loop)
+    monkeypatch.setattr(main.asyncio, 'get_event_loop', mock_get_event_loop)
+    caplog.set_level(logging.INFO)
+    names, _plugins, errors = [], [], []
+    kwargs = {'metrics': metrics_mock} if has_metric else {}
+    expected_result = 'no-plugin-error'
     if has_active_plugins:
+        expected_result = 'success'
         names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
         _plugins = [
             conftest.FakePlugin({}),
@@ -199,11 +219,14 @@ def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
     assert 0 == result.exit_code
     setup_mock.assert_called_once()
     assert exp_log_count == len(caplog.records)
+    if has_metric:
+        metrics_mock._incr.assert_called_once_with(
+            'run-ended', context={'status': expected_result})
 
 
-def test_run_raise_exceptions(loaded_config, plugins, caplog, setup_mock,
-                              load_plugins_mock, plugin_exc_mock,
-                              mock_provided_by, monkeypatch, mocker):
+def test_run_raise_plugin_exceptions(loaded_config, plugins, caplog, setup_mock,
+                                     load_plugins_mock, plugin_exc_mock,
+                                     mock_provided_by):
     """Raise plugin exceptions when not in debug mode."""
     loaded_config['core']['debug'] = False
     setup_mock.return_value = loaded_config
@@ -219,3 +242,32 @@ def test_run_raise_exceptions(loaded_config, plugins, caplog, setup_mock,
     assert 1 == result.exit_code
     setup_mock.assert_called_once()
     assert 1 == len(caplog.records)
+
+
+def test_run_raise_run_exception(monkeypatch, caplog, setup_mock, metrics_mock,
+                                 load_plugins_mock, mock_provided_by):
+
+    async def raises(*args, **kwargs):
+        raise Exception('test!')
+
+    monkeypatch.setattr(main, '_run', raises)
+    caplog.set_level(logging.ERROR)
+
+    names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
+    _plugins = [
+        conftest.FakePlugin({}),
+        conftest.FakePlugin({}),
+        conftest.FakePlugin({})
+    ]
+
+    kwargs = {'metrics': metrics_mock}
+    load_plugins_mock.return_value = names, _plugins, [], kwargs
+
+    runner = CliRunner()
+    result = runner.invoke(main.run)
+
+    assert -1 == result.exit_code
+    assert 1 == len(caplog.records)
+    assert 'test!' in str(caplog.records)
+    metrics_mock._incr.assert_called_once_with(
+        'run-ended', context={'status': 'unexpected-error'})
