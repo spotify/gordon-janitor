@@ -150,6 +150,15 @@ async def _run(plugins, debug):
     await asyncio.gather(*tasks)
 
 
+def report_run_result(metrics, status):
+    if not metrics:
+        return
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(
+        metrics.incr('run-ended', context={'status': status}))
+
+
 @click.command()
 @click.option('-c', '--config-root',
               type=click.Path(exists=True), required=False, default='.',
@@ -166,6 +175,7 @@ def run(config_root):
 
     plugin_names, plugins, errors, plugin_kwargs = plugins_loader.load_plugins(
         config, plugin_kwargs)
+    metrics = plugin_kwargs.get('metrics')
 
     for err_plugin, exc in errors:
         base_msg = f'Plugin was not loaded: {err_plugin}'
@@ -173,14 +183,23 @@ def run(config_root):
 
     if not plugin_names:
         logging.error('No plugins to run, exiting.')
+        report_run_result(metrics, 'no-plugin-error')
         return SystemExit(1)
 
     logging.info(f'Loaded {len(plugin_names)} plugins: {plugin_names}')
     logging.info(f'Starting gordon janitor v{version}...')
+
+    status = 'success'
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(_run(plugins, debug_mode))
+        logging.info('Gordon-janitor run complete.')
+    except Exception as e:
+        logging.error(f'A fatal error occurred during the janitor run: {e}')
+        status = 'unexpected-error'
+        raise e
     finally:
+        report_run_result(metrics, status)
         loop.close()
 
 
