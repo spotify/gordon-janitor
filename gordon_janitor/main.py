@@ -49,13 +49,22 @@ from gordon_janitor import interfaces
 plugins_loader.PLUGIN_NAMESPACE = 'gordon_janitor.plugins'
 
 
+def _deep_merge_dict(a, b):
+    """Additively merge right side dict into left side dict."""
+    for k, v in b.items():
+        if k in a and isinstance(a[k], dict) and isinstance(v, dict):
+            _deep_merge_dict(a[k], v)
+        else:
+            a[k] = v
+
+
 def _load_config(root=''):
     conf, error = {}, False
     conf_files = ['gordon-janitor.toml', 'gordon-janitor-user.toml']
     for conf_file in conf_files:
         try:
             with open(os.path.join(root, conf_file), 'r') as f:
-                conf.update(toml.load(f))
+                _deep_merge_dict(conf, (toml.load(f)))
         except IOError:
             error = True
 
