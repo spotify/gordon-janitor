@@ -49,13 +49,22 @@ from gordon_janitor import interfaces
 plugins_loader.PLUGIN_NAMESPACE = 'gordon_janitor.plugins'
 
 
+def _deep_merge_dict(a, b):
+    """Additively merge right side dict into left side dict."""
+    for k, v in b.items():
+        if k in a and isinstance(a[k], dict) and isinstance(v, dict):
+            _deep_merge_dict(a[k], v)
+        else:
+            a[k] = v
+
+
 def _load_config(root=''):
     conf, error = {}, False
     conf_files = ['gordon-janitor.toml', 'gordon-janitor-user.toml']
     for conf_file in conf_files:
         try:
             with open(os.path.join(root, conf_file), 'r') as f:
-                conf.update(toml.load(f))
+                _deep_merge_dict(conf, (toml.load(f)))
         except IOError:
             error = True
 
@@ -150,6 +159,15 @@ async def _run(plugins, debug):
     await asyncio.gather(*tasks)
 
 
+def report_run_result(metrics, status):
+    if not metrics:
+        return
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(
+        metrics.incr('run-ended', context={'status': status}))
+
+
 @click.command()
 @click.option('-c', '--config-root',
               type=click.Path(exists=True), required=False, default='.',
@@ -166,21 +184,31 @@ def run(config_root):
 
     plugin_names, plugins, errors, plugin_kwargs = plugins_loader.load_plugins(
         config, plugin_kwargs)
+    metrics = plugin_kwargs.get('metrics')
 
-    if errors:
-        base_msg = 'Plugin was not loaded:'
-        _log_or_exit_on_exceptions(base_msg, errors, debug_mode)
+    for err_plugin, exc in errors:
+        base_msg = f'Plugin was not loaded: {err_plugin}'
+        _log_or_exit_on_exceptions(base_msg, exc, debug=debug_mode)
 
     if not plugin_names:
         logging.error('No plugins to run, exiting.')
+        report_run_result(metrics, 'no-plugin-error')
         return SystemExit(1)
 
     logging.info(f'Loaded {len(plugin_names)} plugins: {plugin_names}')
     logging.info(f'Starting gordon janitor v{version}...')
+
+    status = 'success'
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(_run(plugins, debug_mode))
+        logging.info('Gordon-janitor run complete.')
+    except Exception as e:
+        logging.error(f'A fatal error occurred during the janitor run: {e}')
+        status = 'unexpected-error'
+        raise e
     finally:
+        report_run_result(metrics, status)
         loop.close()
 
 

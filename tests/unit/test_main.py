@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import logging
+
 import pytest
 from click.testing import CliRunner
 
@@ -32,8 +35,37 @@ def test_load_config(tmpdir, suffix, config_file, loaded_config):
     conf_file = tmpdir.mkdir('config').join(filename)
     conf_file.write(config_file)
     config = main._load_config(root=conf_file.dirpath())
-
     assert loaded_config == config
+
+
+def test_load_config_deep_merges(tmpdir, config_file, loaded_config):
+    """Additively merge user file to main config."""
+    config_dir = tmpdir.mkdir('mergeconfig')
+    main_conf_file = config_dir.join('gordon-janitor.toml')
+    main_conf_file.write(config_file)
+
+    user_conf_file = config_dir.join('gordon-janitor-user.toml')
+    user_conf_file.write('[core.logging]\nlevel = "error"\n')
+    config = main._load_config(root=config_dir.strpath)
+
+    expected_config = copy.deepcopy(loaded_config)
+    expected_config['core']['logging']['level'] = 'error'
+    assert expected_config == config
+
+
+@pytest.mark.parametrize('a,b,expected', [
+    ({'a': 1}, {'b': 2}, {'a': 1, 'b': 2}),
+    ({'a': 1}, {'a': 2}, {'a': 2}),
+    ({'a': {'a1': 1}}, {'a': {'a2': 2}}, {'a': {'a1': 1, 'a2': 2}}),
+    ({'a': {'a1': 1}}, {'a': {'a1': 2}}, {'a': {'a1': 2}}),
+    ({}, {'a': {'a1': 1}}, {'a': {'a1': 1}}),
+    ({'a': None}, {'a': {'a1': 1}}, {'a': {'a1': 1}}),
+    ({'a': {'a1': 1}}, {'a': None}, {'a': None}),
+    ({'a': {'a1': 1}}, {'a': {}}, {'a': {'a1': 1}})
+])
+def test_deep_merge_dict(a, b, expected):
+    main._deep_merge_dict(a, b)
+    assert expected == a
 
 
 def test_load_config_raises(tmpdir):
@@ -81,41 +113,46 @@ def load_plugins_mock(mocker, monkeypatch):
     return load_plugins_mock
 
 
-args = 'error_type'
-params = [
-    'list', 'obj'
-]
+@pytest.fixture
+def metrics_mock(mocker):
+    metrics = mocker.Mock()
+
+    async def incr(*args, **kwargs):
+        metrics._incr(*args, **kwargs)
+    metrics.incr = incr
+    return metrics
 
 
-@pytest.mark.parametrize(args, params)
-def test_log_or_exit_on_exceptions_no_debug(error_type, plugin_exc_mock,
-                                            mocker, monkeypatch):
+@pytest.mark.parametrize('error_type', ['list', 'obj'])
+def test_log_or_exit_on_exceptions_no_debug(
+        error_type, plugin_exc_mock, caplog, capsys):
     """Raise SystemExit if debug flag is off."""
-    logging_mock = mocker.MagicMock(main.logging, autospec=True)
-    monkeypatch.setattr(main, 'logging', logging_mock)
-
-    error = ('bad.plugin', plugin_exc_mock)
+    error = plugin_exc_mock
     if error_type == 'list':
-        error = [('bad.plugin', error)]
+        error = [error]
     with pytest.raises(SystemExit) as e:
         main._log_or_exit_on_exceptions('base msg', error, debug=False)
-
     e.match('1')
-    logging_mock.error.assert_called_once()
-    logging_mock.warn.assert_not_called()
+
+    assert 1 == len(caplog.records)
+    for record in caplog.records:
+        assert 'ERROR' == record.levelname
+
+    # Assert the bug from https://github.com/spotify/gordon-janitor/pull/14
+    # has not reappeared.
+    out, err = capsys.readouterr()
+    assert '--- Logging error ---' not in err
 
 
-def test_log_or_exit_on_exceptions_debug(plugin_exc_mock, mocker, monkeypatch):
+def test_log_or_exit_on_exceptions_debug(
+        plugin_exc_mock, mocker, monkeypatch, caplog, capsys):
     """Do not exit out if debug flag is on."""
-    logging_mock = mocker.MagicMock(main.logging, autospec=True)
-    monkeypatch.setattr(main, 'logging', logging_mock)
+    msg, error = 'Plugin not loaded "bad.plugin"', plugin_exc_mock
+    main._log_or_exit_on_exceptions(msg, error, debug=True)
 
-    errors = [('bad.plugin', plugin_exc_mock)]
-
-    main._log_or_exit_on_exceptions('base_msg', errors, debug=True)
-
-    logging_mock.warn.assert_called_once()
-    logging_mock.error.assert_not_called()
+    assert 1 == len(caplog.records)
+    for record in caplog.records:
+        assert 'WARNING' == record.levelname
 
 
 @pytest.fixture
@@ -177,19 +214,27 @@ async def test_async_run_debug(debug, mock_provided_by, caplog):
     assert 1 == mock_iauthority.providedBy.call_count
 
 
-run_args = 'has_active_plugins,exp_log_count'
+run_args = 'has_active_plugins,has_metric,exp_log_count'
 run_params = [
-    (True, 2),
-    (False, 1),
+    (True, True, 3),
+    (True, False, 3),
+    (False, True, 1),
 ]
 
 
 @pytest.mark.parametrize(run_args, run_params)
-def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
-             load_plugins_mock, mock_provided_by, mocker, monkeypatch, caplog):
+def test_run(has_active_plugins, has_metric, exp_log_count, setup_mock,
+             load_plugins_mock, mock_provided_by, monkeypatch, caplog,
+             metrics_mock, mocker, event_loop):
     """Successfully start the Gordon service."""
-    names, _plugins, errors, kwargs = [], [], [], {}
+    mock_get_event_loop = mocker.Mock(return_value=event_loop)
+    monkeypatch.setattr(main.asyncio, 'get_event_loop', mock_get_event_loop)
+    caplog.set_level(logging.INFO)
+    names, _plugins, errors = [], [], []
+    kwargs = {'metrics': metrics_mock} if has_metric else {}
+    expected_result = 'no-plugin-error'
     if has_active_plugins:
+        expected_result = 'success'
         names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
         _plugins = [
             conftest.FakePlugin({}),
@@ -204,11 +249,14 @@ def test_run(has_active_plugins, exp_log_count, plugins, setup_mock,
     assert 0 == result.exit_code
     setup_mock.assert_called_once()
     assert exp_log_count == len(caplog.records)
+    if has_metric:
+        metrics_mock._incr.assert_called_once_with(
+            'run-ended', context={'status': expected_result})
 
 
-def test_run_raise_exceptions(loaded_config, plugins, caplog, setup_mock,
-                              load_plugins_mock, plugin_exc_mock,
-                              mock_provided_by, monkeypatch, mocker):
+def test_run_raise_plugin_exceptions(loaded_config, plugins, caplog, setup_mock,
+                                     load_plugins_mock, plugin_exc_mock,
+                                     mock_provided_by):
     """Raise plugin exceptions when not in debug mode."""
     loaded_config['core']['debug'] = False
     setup_mock.return_value = loaded_config
@@ -224,3 +272,32 @@ def test_run_raise_exceptions(loaded_config, plugins, caplog, setup_mock,
     assert 1 == result.exit_code
     setup_mock.assert_called_once()
     assert 1 == len(caplog.records)
+
+
+def test_run_raise_run_exception(monkeypatch, caplog, setup_mock, metrics_mock,
+                                 load_plugins_mock, mock_provided_by):
+
+    async def raises(*args, **kwargs):
+        raise Exception('test!')
+
+    monkeypatch.setattr(main, '_run', raises)
+    caplog.set_level(logging.ERROR)
+
+    names = ['authority.plugin', 'reconciler.plugin', 'publisher.plugin']
+    _plugins = [
+        conftest.FakePlugin({}),
+        conftest.FakePlugin({}),
+        conftest.FakePlugin({})
+    ]
+
+    kwargs = {'metrics': metrics_mock}
+    load_plugins_mock.return_value = names, _plugins, [], kwargs
+
+    runner = CliRunner()
+    result = runner.invoke(main.run)
+
+    assert -1 == result.exit_code
+    assert 1 == len(caplog.records)
+    assert 'test!' in str(caplog.records)
+    metrics_mock._incr.assert_called_once_with(
+        'run-ended', context={'status': 'unexpected-error'})
