@@ -1,6 +1,20 @@
 Changelog
 =========
 
+0.0.1.dev7 (2018-11-15)
+-----------------------
+
+Adds
+~~~~
+End of run log message, metric
+
+
+Fixes
+~~~~~
+* Correctly handle plugin loader errors
+* Deep merge user config file when used
+
+
 0.0.1.dev6 (2018-09-07)
 -----------------------
 
