@@ -11,7 +11,7 @@ An example of a ``gordon-janitor.toml`` file:
     :language: ini
 
 
-You may choose to have a ``gordon-janitor-user.toml`` file for development. Any top-level key will override what's found in ``gordon-janitor.toml``.
+You may choose to have a ``gordon-janitor-user.toml`` file for development. All tables are deep merged into ``gordon-janitor.toml``, to limit the amount of config duplication needed. For example, you can override ``core.debug`` without having to redeclare which plugins you'd like to run.
 
 .. code-block:: ini
 
