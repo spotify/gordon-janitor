@@ -1,3 +1,7 @@
+**Gordon is no longer developed publicly.  This code will remain available, but will not change.**
+
+----
+
 =====================================================
 ``gordon-janitor``: Reconciliation Service for Gordon
 =====================================================
